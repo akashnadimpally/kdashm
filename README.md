@@ -1,36 +1,80 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Kubernetes Dashboard (Local)
 
-## Getting Started
+A modern, glassmorphism-styled Kubernetes dashboard for visualizing and managing your local clusters (Minikube, Kind, Docker Desktop, etc.). Built with Next.js, React, and Tailwind CSS.
 
-First, run the development server:
+![Dashboard Preview](public/dashboard-preview.png) *Note: Add a screenshot here*
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+## Features
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+*   **Real-time Cluster Monitoring**: View live status of Pods, deployments, services, nodes, and more.
+*   **Interactive Resource Visualizer**: A drag-and-drop node-link graph to visualize relationships between resources (Pods, Services, Ingresses).
+*   **Advanced Analytics**:
+    *   **Container Restarts**: Identify unstable pods.
+    *   **Network Activity**: Monitor API server request rates.
+    *   **Resource Efficiency**: CPU/Memory utilization and pod density per node.
+    *   **HPA Autoscaling**: Visualize Horizontal Pod Autoscalers, current replicas, and metric targets.
+*   **Helm Chart Manager**:
+    *   Browse and install charts from the embedded App Catalog.
+    *   Manage existing Helm releases (install, uninstall, view history).
+    *   View release revisions and status.
+*   **RBAC Visualization**: Clear distinction between Cluster-wide (ClusterRole/Binding) and Namespace-scoped (Role/Binding) permissions.
+*   **Namespace Filtering**: Filter resources and metrics by namespace.
+*   **Smart Search**: Filter resources by name, label, or status.
+*   **Direct Actions**:
+    *   Restart Deployments/StatefulSets.
+    *   Delete Pods.
+    *   Scale Replicas (via HPA).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Tech Stack
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+-   **Frontend**: [Next.js](https://nextjs.org/), [React 19](https://react.dev/)
+-   **Styling**: Custom CSS (Glassmorphism), [Lucide React](https://lucide.dev/) (Icons)
+-   **Animation**: [Framer Motion](https://www.framer.com/motion/)
+-   **Charts**: [Recharts](https://recharts.org/)
+-   **Kubernetes Integration**: [@kubernetes/client-node](https://github.com/kubernetes-client/javascript)
+-   **Data Fetching**: [SWR](https://swr.vercel.app/)
 
-## Learn More
+## Prerequisites
 
-To learn more about Next.js, take a look at the following resources:
+-   **Node.js** (v18 or later recommended)
+-   **Kubernetes Cluster**: A running local cluster (e.g., Minikube, Kind, Docker Desktop).
+-   **kubectl**: Configured to point to your local cluster.
+-   **Helm**: Installed and available in your path (for Helm management features).
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Installation
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+1.  **Clone the repository**:
+    ```bash
+    git clone <repository-url>
+    cd k8s_dashboard
+    ```
 
-## Deploy on Vercel
+2.  **Install dependencies**:
+    ```bash
+    npm install
+    ```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Usage
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+1.  **Start the development server**:
+    ```bash
+    npm run dev
+    ```
+
+2.  **Open the dashboard**:
+    Navigate to [http://localhost:3000](http://localhost:3000) in your browser.
+
+    The dashboard will automatically connect to your active Kubernetes context (as defined in `~/.kube/config`).
+
+## Configuration
+
+*   **Kubeconfig**: The app uses the default kubeconfig location (`~/.kube/config`). Ensure your context is set correctly before starting.
+*   **Port**: runs on port `3000` by default.
+
+## Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+## License
+
+[MIT](LICENSE)
