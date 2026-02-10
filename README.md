@@ -2,7 +2,7 @@
 
 A modern, glassmorphism-styled Kubernetes dashboard for visualizing and managing your local clusters (Minikube, Kind, Docker Desktop, etc.). Built with Next.js, React, and Tailwind CSS.
 
-![Dashboard Preview](public/dashboard-preview.png) *Note: Add a screenshot here*
+
 
 ## Features
 
