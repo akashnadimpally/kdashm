@@ -80,6 +80,27 @@ To enable metrics (CPU/Memory usage) on local clusters like Docker Desktop, you 
 
     The dashboard will automatically connect to your active Kubernetes context (as defined in `~/.kube/config`).
 
+## Managed Clusters (EKS, AKS, GKE)
+
+The dashboard supports managed Kubernetes clusters. Ensure your `~/.kube/config` is configured correctly and you have the necessary authentication plugins installed (e.g., `aws-iam-authenticator`, `kubelogin`, `gcloud`).
+
+1.  **AWS EKS**:
+    ```bash
+    aws eks update-kubeconfig --region <region> --name <cluster-name>
+    ```
+
+2.  **Azure AKS**:
+    ```bash
+    az aks get-credentials --resource-group <resource-group> --name <cluster-name>
+    ```
+
+3.  **Google GKE**:
+    ```bash
+    gcloud container clusters get-credentials <cluster-name> --region <region>
+    ```
+
+Once configured, simply switch the context using the dropdown in the sidebar or via `kubectl config use-context <context-name>`.
+
 ## Configuration
 
 *   **Kubeconfig**: The app uses the default kubeconfig location (`~/.kube/config`). Ensure your context is set correctly before starting.
