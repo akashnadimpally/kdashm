@@ -12,6 +12,53 @@ import {
 
 const fetcher = (url: string) => fetch(url).then((res) => res.json());
 
+const metricsFetcher = async (url: string) => {
+  const text = await fetch(url).then(res => res.text());
+  const lines = text.split('\n');
+  const metrics: any = {};
+  let currentHelp = '';
+  let currentType = '';
+
+  lines.forEach(line => {
+    line = line.trim();
+    if (!line) return;
+    if (line.startsWith('# HELP')) {
+      const parts = line.split(' ');
+      const name = parts[2];
+      currentHelp = parts.slice(3).join(' ');
+      if (!metrics[name]) metrics[name] = { name, help: currentHelp, samples: [] };
+      else metrics[name].help = currentHelp;
+    } else if (line.startsWith('# TYPE')) {
+      const parts = line.split(' ');
+      const name = parts[2];
+      currentType = parts[3];
+      if (!metrics[name]) metrics[name] = { name, type: currentType, samples: [] };
+      else metrics[name].type = currentType;
+    } else if (!line.startsWith('#')) {
+      const match = line.match(/^([a-zA-Z0-9_:]+)(?:\{([^}]+)\})?\s+(.+)$/);
+      if (match) {
+        const name = match[1];
+        const labelStr = match[2];
+        const value = parseFloat(match[3]) || match[3];
+        const labels: any = {};
+        if (labelStr) {
+          labelStr.replace(/([a-zA-Z0-9_]+)="([^"]+)"/g, (m, k, v) => {
+            labels[k] = v;
+            return '';
+          });
+        }
+        
+        if (!metrics[name]) metrics[name] = { name, samples: [] };
+        metrics[name].samples.push({ labels, value });
+        // Also populate 'values' property for backward compatibility with Analytics charts
+        if (!metrics[name].values) metrics[name].values = [];
+        metrics[name].values.push({ value, timestamp: Date.now() });
+      }
+    }
+  });
+  return Object.values(metrics);
+};
+
 export default function Home() {
   const [activeTab, setActiveTab] = useState('all');
   const [selectedCrd, setSelectedCrd] = useState<any>(null);
@@ -33,6 +80,8 @@ export default function Home() {
   const [showInstallModal, setShowInstallModal] = useState<any>(null);
   const [installConfig, setInstallConfig] = useState({ releaseName: '', namespace: 'default', isNew: false });
   const [metricsNamespaceFilter, setMetricsNamespaceFilter] = useState('all');
+  const [metricsExplorerSearch, setMetricsExplorerSearch] = useState('');
+  const [selectedExplorerMetric, setSelectedExplorerMetric] = useState<any>(null);
 
   const { data, error, isLoading, mutate } = useSWR('/api/resources', fetcher, {
     refreshInterval: 10000,
@@ -45,7 +94,7 @@ export default function Home() {
   // Unified high-frequency metrics stream for Analytics and Explorer
   const { data: unifiedRawMetrics, isLoading: loadingRawMetrics } = useSWR(
     (activeTab === 'metrics' || activeTab === 'analytics' || activeTab === 'all') ? '/api/metrics/raw' : null,
-    fetcher,
+    metricsFetcher,
     { refreshInterval: 5000 }
   );
 
@@ -104,6 +153,7 @@ export default function Home() {
       }
     }
   }, [unifiedRawMetrics, data, metricsData, selectedNamespace, analyticsLabelSearch, selectedMetricForChart]);
+
 
   // Clear history when filter significantly changes to avoid mixed data points
   useEffect(() => {
@@ -564,7 +614,7 @@ export default function Home() {
                 <h3 style={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}><RefreshCcw size={18} /> Container Restarts</h3>
                 <div style={{ textAlign: 'right' }}>
                   <div style={{ fontSize: '1.5rem', fontWeight: 900, color: '#ef4444' }}>
-                    {data.pods?.reduce((acc: number, p: any) => 
+                    {data.pods?.reduce((acc: number, p: any) =>
                       acc + (p.status?.containerStatuses?.reduce((sum: number, c: any) => sum + (c.restartCount || 0), 0) || 0), 0
                     ) || 0}
                   </div>
@@ -572,7 +622,7 @@ export default function Home() {
                 </div>
               </div>
               <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '8px', overflow: 'auto' }}>
-                {data.pods?.filter((p: any) => 
+                {data.pods?.filter((p: any) =>
                   p.status?.containerStatuses?.some((c: any) => c.restartCount > 0)
                 ).slice(0, 5).map((pod: any, i: number) => {
                   const restarts = pod.status?.containerStatuses?.reduce((sum: number, c: any) => sum + (c.restartCount || 0), 0) || 0;
@@ -632,7 +682,7 @@ export default function Home() {
                   <div style={{ fontSize: '0.6rem', opacity: 0.5 }}>ACTIVE SCALERS</div>
                 </div>
               </div>
-              
+
               <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '8px', overflow: 'auto' }}>
                 {data.hpas && data.hpas.length > 0 ? (
                   data.hpas.map((hpa: any, i: number) => {
@@ -644,7 +694,7 @@ export default function Home() {
                     // Try to get CPU metric
                     const cpuMetric = hpa.status?.currentMetrics?.find((m: any) => m.type === 'Resource' && m.resource?.name === 'cpu');
                     const currentCpu = cpuMetric?.resource?.current?.averageUtilization;
-                    
+
                     return (
                       <div key={i} style={{ padding: '12px', background: 'rgba(255,255,255,0.03)', borderRadius: '12px' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
@@ -657,17 +707,17 @@ export default function Home() {
                             <div style={{ fontSize: '0.6rem', opacity: 0.5 }}>REPLICAS</div>
                           </div>
                         </div>
-                        
+
                         <div style={{ marginTop: '8px' }}>
-                           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.7rem', marginBottom: '4px' }}>
-                             <span style={{ opacity: 0.7 }}>Scale Capacity</span>
-                             <span>{utilization}%</span>
-                           </div>
-                           <div style={{ width: '100%', height: '4px', background: 'rgba(236, 72, 153, 0.2)', borderRadius: '2px', overflow: 'hidden' }}>
-                              <div style={{ width: `${Math.min(utilization, 100)}%`, height: '100%', background: '#ec4899' }} />
-                           </div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.7rem', marginBottom: '4px' }}>
+                            <span style={{ opacity: 0.7 }}>Scale Capacity</span>
+                            <span>{utilization}%</span>
+                          </div>
+                          <div style={{ width: '100%', height: '4px', background: 'rgba(236, 72, 153, 0.2)', borderRadius: '2px', overflow: 'hidden' }}>
+                            <div style={{ width: `${Math.min(utilization, 100)}%`, height: '100%', background: '#ec4899' }} />
+                          </div>
                         </div>
-                        
+
                         {currentCpu !== undefined && (
                           <div style={{ marginTop: '8px', fontSize: '0.7rem', display: 'flex', gap: '4px', alignItems: 'center' }}>
                             <Cpu size={10} /> <span>CPU Load: {currentCpu}%</span>
@@ -696,23 +746,23 @@ export default function Home() {
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
                     <span style={{ fontSize: '0.8rem', fontWeight: 700 }}>CPU Utilization</span>
                     <span style={{ fontSize: '0.8rem', fontWeight: 900, color: '#3b82f6' }}>
-                      {metricsData?.pods?.length > 0 ? 
-                        Math.round((metricsData.pods.reduce((acc: number, p: any) => 
-                          acc + (p.containers?.reduce((sum: number, c: any) => 
+                      {metricsData?.pods?.length > 0 ?
+                        Math.round((metricsData.pods.reduce((acc: number, p: any) =>
+                          acc + (p.containers?.reduce((sum: number, c: any) =>
                             sum + parseFloat(c.usage?.cpu?.replace('n', '') || '0'), 0) || 0), 0
                         ) / 1000000) / 10) : 0}%
                     </span>
                   </div>
                   <div style={{ width: '100%', height: '12px', background: 'rgba(255,255,255,0.05)', borderRadius: '6px', overflow: 'hidden' }}>
-                    <div style={{ 
-                      width: `${Math.min(metricsData?.pods?.length > 0 ? 
-                        Math.round((metricsData.pods.reduce((acc: number, p: any) => 
-                          acc + (p.containers?.reduce((sum: number, c: any) => 
+                    <div style={{
+                      width: `${Math.min(metricsData?.pods?.length > 0 ?
+                        Math.round((metricsData.pods.reduce((acc: number, p: any) =>
+                          acc + (p.containers?.reduce((sum: number, c: any) =>
                             sum + parseFloat(c.usage?.cpu?.replace('n', '') || '0'), 0) || 0), 0
-                        ) / 1000000) / 10) : 0, 100)}%`, 
-                      height: '100%', 
-                      background: 'linear-gradient(90deg, #3b82f6, #60a5fa)', 
-                      transition: 'width 0.5s ease' 
+                        ) / 1000000) / 10) : 0, 100)}%`,
+                      height: '100%',
+                      background: 'linear-gradient(90deg, #3b82f6, #60a5fa)',
+                      transition: 'width 0.5s ease'
                     }} />
                   </div>
                 </div>
@@ -722,23 +772,23 @@ export default function Home() {
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
                     <span style={{ fontSize: '0.8rem', fontWeight: 700 }}>Memory Utilization</span>
                     <span style={{ fontSize: '0.8rem', fontWeight: 900, color: '#a855f7' }}>
-                      {metricsData?.pods?.length > 0 ? 
-                        Math.round((metricsData.pods.reduce((acc: number, p: any) => 
-                          acc + (p.containers?.reduce((sum: number, c: any) => 
+                      {metricsData?.pods?.length > 0 ?
+                        Math.round((metricsData.pods.reduce((acc: number, p: any) =>
+                          acc + (p.containers?.reduce((sum: number, c: any) =>
                             sum + parseFloat(c.usage?.memory?.replace('Ki', '') || '0'), 0) || 0), 0
                         ) / 1024 / 1024) / 10) : 0}%
                     </span>
                   </div>
                   <div style={{ width: '100%', height: '12px', background: 'rgba(255,255,255,0.05)', borderRadius: '6px', overflow: 'hidden' }}>
-                    <div style={{ 
-                      width: `${Math.min(metricsData?.pods?.length > 0 ? 
-                        Math.round((metricsData.pods.reduce((acc: number, p: any) => 
-                          acc + (p.containers?.reduce((sum: number, c: any) => 
+                    <div style={{
+                      width: `${Math.min(metricsData?.pods?.length > 0 ?
+                        Math.round((metricsData.pods.reduce((acc: number, p: any) =>
+                          acc + (p.containers?.reduce((sum: number, c: any) =>
                             sum + parseFloat(c.usage?.memory?.replace('Ki', '') || '0'), 0) || 0), 0
-                        ) / 1024 / 1024) / 10) : 0, 100)}%`, 
-                      height: '100%', 
-                      background: 'linear-gradient(90deg, #a855f7, #c084fc)', 
-                      transition: 'width 0.5s ease' 
+                        ) / 1024 / 1024) / 10) : 0, 100)}%`,
+                      height: '100%',
+                      background: 'linear-gradient(90deg, #a855f7, #c084fc)',
+                      transition: 'width 0.5s ease'
                     }} />
                   </div>
                 </div>
@@ -758,11 +808,11 @@ export default function Home() {
                       const pct = (nodePods / maxPods) * 100;
                       return (
                         <div key={i} style={{ flex: 1, height: '60px', background: 'rgba(255,255,255,0.05)', borderRadius: '8px', overflow: 'hidden', position: 'relative' }}>
-                          <div style={{ 
-                            position: 'absolute', 
-                            bottom: 0, 
-                            width: '100%', 
-                            height: `${pct}%`, 
+                          <div style={{
+                            position: 'absolute',
+                            bottom: 0,
+                            width: '100%',
+                            height: `${pct}%`,
                             background: pct > 80 ? '#ef4444' : pct > 60 ? '#f59e0b' : '#22c55e',
                             transition: 'height 0.5s ease'
                           }} />
@@ -896,7 +946,7 @@ export default function Home() {
                           <span style={{ fontWeight: 800, color: 'var(--primary)' }}>{typeof v.value === 'number' ? v.value.toLocaleString() : v.value}</span>
                         </div>
                         <div style={{ opacity: 0.6, fontSize: '0.65rem', wordBreak: 'break-all' }}>
-                          {Object.entries(v.labels).map(([kl, vl]) => `${kl}=${vl}`).join(', ')}
+                          {Object.entries(v.labels || {}).map(([kl, vl]) => `${kl}=${vl}`).join(', ')}
                         </div>
                       </div>
                     ))}
@@ -921,21 +971,21 @@ export default function Home() {
                   <tr key={m.name} onClick={() => { setSelectedMetricForChart(m); setMetricHistory([]); }} style={{ cursor: 'pointer' }}>
                     <td>
                       <div style={{ fontWeight: 700, color: 'var(--primary)' }}>{m.name}</div>
-                      {m.values.length > 1 && <div style={{ fontSize: '0.65rem', opacity: 0.4 }}>{m.values.length} series</div>}
+                      {(m.values || []).length > 1 && <div style={{ fontSize: '0.65rem', opacity: 0.4 }}>{(m.values || []).length} series</div>}
                     </td>
                     <td><span className="badge badge-blue" style={{ fontSize: '0.6rem' }}>{m.type?.toUpperCase() || 'UNTYPED'}</span></td>
                     <td style={{ fontSize: '0.75rem', opacity: 0.7, maxWidth: '300px' }}>{m.help}</td>
                     <td>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                        {m.values.slice(0, 5).map((v: any, idx: number) => (
+                        {(m.values || []).slice(0, 5).map((v: any, idx: number) => (
                           <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', gap: '10px', fontSize: '0.75rem' }}>
-                            <div style={{ opacity: 0.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '150px' }} title={Object.entries(v.labels).map(([kl, vl]) => `${kl}=${vl}`).join(', ')}>
-                              {Object.entries(v.labels).map(([kl, vl]) => `${kl}=${vl}`).join(', ') || 'default'}
+                            <div style={{ opacity: 0.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '150px' }} title={Object.entries(v.labels || {}).map(([kl, vl]) => `${kl}=${vl}`).join(', ')}>
+                              {Object.entries(v.labels || {}).map(([kl, vl]) => `${kl}=${vl}`).join(', ') || 'default'}
                             </div>
                             <div style={{ fontWeight: 800 }}>{typeof v.value === 'number' ? v.value.toLocaleString() : v.value}</div>
                           </div>
                         ))}
-                        {m.values.length > 5 && <div style={{ fontSize: '0.65rem', opacity: 0.3 }}>+ {m.values.length - 5} more series</div>}
+                        {(m.values || []).length > 5 && <div style={{ fontSize: '0.65rem', opacity: 0.3 }}>+ {(m.values || []).length - 5} more series</div>}
                       </div>
                     </td>
                   </tr>
@@ -1117,6 +1167,95 @@ export default function Home() {
                 <span style={{ opacity: 0.6 }}>{l.label}</span>
               </div>
             ))}
+          </div>
+        </div>
+      );
+    }
+
+    // Metrics Explorer Implementation
+    if (activeTab === 'metrics') {
+      const filtered = (unifiedRawMetrics || []).filter((m: any) => m.name.toLowerCase().includes(metricsExplorerSearch.toLowerCase()));
+
+      return (
+        <div className="animate-fade-in" style={{ display: 'grid', gridTemplateColumns: '350px 1fr', gap: '1rem', height: 'calc(100vh - 140px)' }}>
+          <div className="card glass" style={{ display: 'flex', flexDirection: 'column', padding: '0.5rem', maxHeight: '100%' }}>
+            <div style={{ padding: '0.5rem', borderBottom: '1px solid rgba(255,255,255,0.1)', marginBottom: '0.5rem' }}>
+              <h3 className="gradient-text" style={{ fontSize: '1.2rem', marginBottom: '0.5rem' }}>Metrics Explorer</h3>
+              <input
+                type="text"
+                placeholder="Search metrics (e.g. apiserver)..."
+                value={metricsExplorerSearch}
+                onChange={e => setMetricsExplorerSearch(e.target.value)}
+                className="glass"
+                style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: 'none', color: '#fff' }}
+                autoFocus
+              />
+              <div style={{ fontSize: '0.75rem', opacity: 0.6, marginTop: '4px' }}>
+                Showing {filtered.length} of {(unifiedRawMetrics || []).length} metrics
+              </div>
+            </div>
+            <div style={{ flex: 1, overflowY: 'auto' }}>
+              {filtered.map(m => (
+                <div
+                  key={m.name}
+                  onClick={() => setSelectedExplorerMetric(m)}
+                  style={{
+                    padding: '0.5rem',
+                    cursor: 'pointer',
+                    borderRadius: '4px',
+                    background: selectedExplorerMetric?.name === m.name ? 'rgba(59, 130, 246, 0.2)' : 'transparent',
+                    borderLeft: selectedExplorerMetric?.name === m.name ? '3px solid #60a5fa' : '3px solid transparent',
+                    opacity: selectedExplorerMetric?.name === m.name ? 1 : 0.7,
+                    fontSize: '0.85rem',
+                    marginBottom: '2px',
+                    whiteSpace: 'nowrap',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis'
+                  }}
+                >
+                  <div style={{ fontWeight: 600 }}>{m.name}</div>
+                  <div style={{ fontSize: '0.7rem', opacity: 0.6 }}>{m.type}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="card glass" style={{ padding: '1.5rem', overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
+            {selectedExplorerMetric ? (
+              <div>
+                <header style={{ marginBottom: '1.5rem', paddingBottom: '1rem', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+                  <h3 className="gradient-text" style={{ fontSize: '1.8rem', marginBottom: '0.5rem', wordBreak: 'break-all' }}>{selectedExplorerMetric.name}</h3>
+                  <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', fontSize: '0.9rem', opacity: 0.8 }}>
+                    <span className="badge badge-purple" style={{ textTransform: 'uppercase' }}>{selectedExplorerMetric.type || 'UNKNOWN'}</span>
+                    <span>{selectedExplorerMetric.help}</span>
+                  </div>
+                </header>
+
+                <h4 style={{ fontSize: '1rem', marginBottom: '1rem', opacity: 0.8 }}>Current Series ({selectedExplorerMetric.samples.length})</h4>
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+                    <thead>
+                      <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.1)', textAlign: 'left' }}>
+                        <th style={{ padding: '0.75rem' }}>Value</th>
+                        <th style={{ padding: '0.75rem' }}>Labels</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {selectedExplorerMetric.samples.map((s: any, i: number) => (
+                        <tr key={i} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                          <td style={{ padding: '0.75rem', fontWeight: 'bold', color: '#60a5fa', whiteSpace: 'nowrap' }}>{s.value}</td>
+                          <td style={{ padding: '0.75rem', fontFamily: 'monospace', opacity: 0.8, wordBreak: 'break-all' }}>{s.labels || '{}'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            ) : (
+              <div style={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', opacity: 0.5 }}>
+                <Activity size={48} style={{ marginBottom: '1rem', opacity: 0.5 }} />
+                <p>Select a metric from the list to view its details and current values.</p>
+              </div>
+            )}
           </div>
         </div>
       );
@@ -1373,8 +1512,8 @@ export default function Home() {
                   {activeTab === 'hpas' && (
                     <td>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', fontSize: '0.75rem' }}>
-                         <div style={{ fontWeight: 700, color: 'var(--primary)' }}>{res.status?.currentReplicas || 0} / {res.spec?.maxReplicas} replicas</div>
-                         <div style={{ opacity: 0.5, fontSize: '0.65rem' }}>Min: {res.spec?.minReplicas || 1}</div>
+                        <div style={{ fontWeight: 700, color: 'var(--primary)' }}>{res.status?.currentReplicas || 0} / {res.spec?.maxReplicas} replicas</div>
+                        <div style={{ opacity: 0.5, fontSize: '0.65rem' }}>Min: {res.spec?.minReplicas || 1}</div>
                       </div>
                     </td>
                   )}
@@ -1382,12 +1521,12 @@ export default function Home() {
                     <td>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                         {res.status?.currentMetrics?.slice(0, 2).map((m: any, idx: number) => (
-                           <div key={idx} style={{ fontSize: '0.7rem', display: 'flex', gap: '6px', alignItems: 'center' }}>
-                             <span className="badge badge-gray">{m.type === 'Resource' ? m.resource?.name : m.type}</span>
-                             <span style={{ fontWeight: 800, color: '#ec4899' }}>{m.resource?.current?.averageUtilization || 0}%</span>
-                           </div>
+                          <div key={idx} style={{ fontSize: '0.7rem', display: 'flex', gap: '6px', alignItems: 'center' }}>
+                            <span className="badge badge-gray">{m.type === 'Resource' ? m.resource?.name : m.type}</span>
+                            <span style={{ fontWeight: 800, color: '#ec4899' }}>{m.resource?.current?.averageUtilization || 0}%</span>
+                          </div>
                         ))}
-                         {(!res.status?.currentMetrics || res.status?.currentMetrics.length === 0) && <span style={{ opacity: 0.5, fontSize: '0.7rem' }}>-</span>}
+                        {(!res.status?.currentMetrics || res.status?.currentMetrics.length === 0) && <span style={{ opacity: 0.5, fontSize: '0.7rem' }}>-</span>}
                       </div>
                     </td>
                   )}
@@ -1400,18 +1539,10 @@ export default function Home() {
                       return (
                         <div
                           onClick={() => setShowEvents(res)}
-                          title="Click to view all events"
-                          style={{ cursor: 'pointer', maxWidth: '180px', display: 'flex', flexDirection: 'column', gap: '2px' }}
+                          style={{ fontSize: '0.75rem', opacity: 0.8, cursor: 'pointer', display: 'flex', flexDirection: 'column' }}
                         >
-                          <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: '0.75rem', color: isWarning ? 'var(--danger)' : 'rgba(255,255,255,0.7)', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                            <div style={{ minWidth: '6px', width: '6px', height: '6px', borderRadius: '50%', background: isWarning ? 'var(--danger)' : '#4ade80', boxShadow: isWarning ? '0 0 8px var(--danger)' : 'none' }}></div>
-                            {latest.message}
-                          </div>
-                          {evts.length > 1 && (
-                            <div style={{ fontSize: '0.65rem', opacity: 0.4, paddingLeft: '10px' }}>
-                              + {evts.length - 1} more events
-                            </div>
-                          )}
+                          <span className={isWarning ? 'text-red-400' : ''}>{latest.reason}</span>
+                          <span style={{ opacity: 0.5, fontSize: '0.65rem' }}>{Math.floor((Date.now() - new Date(latest.lastTimestamp).getTime()) / 60000)}m ago</span>
                         </div>
                       );
                     })()}
@@ -1665,7 +1796,7 @@ export default function Home() {
                           const related: any[] = [];
                           (rawMetrics || []).forEach((m: any) => {
                             m.values.forEach((v: any) => {
-                              const hasPod = Object.values(v.labels).some((l: any) => String(l).includes(podName));
+                              const hasPod = Object.values(v.labels || {}).some((l: any) => String(l).includes(podName));
                               if (hasPod) {
                                 related.push({ name: m.name, labels: v.labels, value: v.value });
                               }
@@ -1678,7 +1809,7 @@ export default function Home() {
                             <tr key={i}>
                               <td style={{ color: 'var(--primary)', fontWeight: 600 }}>{r.name}</td>
                               <td style={{ fontSize: '0.7rem', opacity: 0.6 }}>
-                                {Object.entries(r.labels).map(([k, v]) => `${k}=${v}`).join(', ')}
+                                {Object.entries(r.labels || {}).map(([k, v]) => `${k}=${v}`).join(', ')}
                               </td>
                               <td style={{ textAlign: 'right', fontWeight: 800 }}>{typeof r.value === 'number' ? r.value.toLocaleString() : r.value}</td>
                             </tr>
