@@ -54,6 +54,20 @@ A modern, glassmorphism-styled Kubernetes dashboard for visualizing and managing
     npm install
     ```
 
+## Metrics Server Setup (Local Clusters)
+
+To enable metrics (CPU/Memory usage) on local clusters like Docker Desktop, you may need to install the Metrics Server with insecure TLS enabled:
+
+1.  **Apply the manifest**:
+    ```bash
+    kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml
+    ```
+
+2.  **Patch for local development**:
+    ```bash
+    kubectl patch deployment metrics-server -n kube-system --type='json' -p='[{"op": "add", "path": "/spec/template/spec/containers/0/args/-", "value": "--kubelet-insecure-tls"}]'
+    ```
+
 ## Usage
 
 1.  **Start the development server**:
