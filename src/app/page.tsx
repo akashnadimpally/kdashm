@@ -3,7 +3,7 @@ import { useState, useMemo, useEffect } from 'react';
 import useSWR from 'swr';
 import { motion, AnimatePresence } from 'framer-motion';
 import Sidebar from '@/components/Sidebar';
-import { Box, Layers, Network, Shield, Settings, Server, Database, Cpu, Activity, RefreshCw, ChevronRight, X, Terminal, Eye, Lock, Unlock, RefreshCcw, Trash2, FileCode, User, Store, Plus, GitBranch, ShipWheel } from 'lucide-react';
+import { Box, Layers, Network, Shield, Settings, Server, Database, Cpu, Activity, RefreshCw, ChevronRight, ChevronUp, ChevronDown, X, Terminal, Eye, Lock, Unlock, RefreshCcw, Trash2, FileCode, User, Store, Plus, GitBranch, ShipWheel } from 'lucide-react';
 import yaml from 'js-yaml';
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -47,7 +47,7 @@ const metricsFetcher = async (url: string) => {
             return '';
           });
         }
-        
+
         if (!metrics[name]) metrics[name] = { name, samples: [] };
         metrics[name].samples.push({ labels, value });
         // Also populate 'values' property for backward compatibility with Analytics charts
@@ -82,6 +82,7 @@ export default function Home() {
   const [metricsNamespaceFilter, setMetricsNamespaceFilter] = useState('all');
   const [metricsExplorerSearch, setMetricsExplorerSearch] = useState('');
   const [selectedExplorerMetric, setSelectedExplorerMetric] = useState<any>(null);
+  const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' } | null>(null);
 
   const { data, error, isLoading, mutate } = useSWR('/api/resources', fetcher, {
     refreshInterval: 10000,
@@ -140,7 +141,20 @@ export default function Home() {
         else podPending++;
       });
 
-      const currentPoint = { timestamp, cpu: cpuTotal, memory: memTotal, running: podRunning, pending: podPending };
+      let podRequests = 0;
+      let serviceRequests = 0;
+
+      if (unifiedRawMetrics) {
+        const reqMetric = unifiedRawMetrics.find((m: any) => m.name === 'apiserver_request_total');
+        if (reqMetric) {
+          reqMetric.values.forEach((v: any) => {
+            if (v.labels?.resource === 'pods') podRequests += typeof v.value === 'number' ? v.value : 0;
+            if (v.labels?.resource === 'services') serviceRequests += typeof v.value === 'number' ? v.value : 0;
+          });
+        }
+      }
+
+      const currentPoint = { timestamp, cpu: cpuTotal, memory: memTotal, running: podRunning, pending: podPending, podRequests, serviceRequests };
       setHistory(prev => [...prev, currentPoint].slice(-30));
 
       // Also track the "Pinned" metric for explorer chart
@@ -242,6 +256,14 @@ export default function Home() {
     });
   };
 
+  const requestSort = (key: string) => {
+    let direction: 'asc' | 'desc' = 'asc';
+    if (sortConfig && sortConfig.key === key && sortConfig.direction === 'asc') {
+      direction = 'desc';
+    }
+    setSortConfig({ key, direction });
+  };
+
   const stats = useMemo(() => {
     if (!data) return [];
     return [
@@ -261,15 +283,8 @@ export default function Home() {
   const filteredResources = useMemo(() => {
     if (!data || activeTab === 'all') return [];
 
-    if (activeTab === 'rbac') {
-      const allRbac = [
-        ...(data.roles || []).map((r: any) => ({ ...r, kind: 'Role' })),
-        ...(data.clusterRoles || []).map((r: any) => ({ ...r, kind: 'ClusterRole' })),
-        ...(data.roleBindings || []).map((r: any) => ({ ...r, kind: 'RoleBinding' })),
-        ...(data.clusterRoleBindings || []).map((r: any) => ({ ...r, kind: 'ClusterRoleBinding' }))
-      ];
-      if (selectedNamespace === 'all') return allRbac;
-      return allRbac.filter((res: any) => res.metadata.namespace === selectedNamespace);
+    if (['nodes', 'pvs', 'storageClasses', 'clusterRoles', 'clusterRoleBindings', 'crds'].includes(activeTab)) {
+      return data[activeTab] || [];
     }
 
     if (activeTab === 'helmCharts') {
@@ -319,6 +334,7 @@ export default function Home() {
     if (!val) return 0;
     const num = parseFloat(val);
     const unit = val.toLowerCase();
+    if (unit.endsWith('n')) return num / 1000000; // nano to milli
     if (unit.endsWith('m')) return num; // milli
     if (unit.endsWith('ki')) return num / 1024;
     if (unit.endsWith('mi')) return num;
@@ -392,6 +408,49 @@ export default function Home() {
     );
   };
 
+
+
+  const sortedResources = useMemo(() => {
+    let sortableItems = [...filteredResources];
+    if (sortConfig !== null) {
+      sortableItems.sort((a: any, b: any) => {
+        let aValue: any = '', bValue: any = '';
+
+        if (sortConfig.key === 'name') {
+          aValue = a.metadata?.name || '';
+          bValue = b.metadata?.name || '';
+        } else if (sortConfig.key === 'namespace') {
+          aValue = a.metadata?.namespace || '';
+          bValue = b.metadata?.namespace || '';
+        } else if (sortConfig.key === 'age') { // We map 'uptime' to 'age' logic roughly or add Age column
+          aValue = new Date(a.metadata?.creationTimestamp || 0).getTime();
+          bValue = new Date(b.metadata?.creationTimestamp || 0).getTime();
+        } else if (sortConfig.key === 'cpu') {
+          aValue = getMetricsForPod(a)?.cpuUsage || 0;
+          bValue = getMetricsForPod(b)?.cpuUsage || 0;
+        } else if (sortConfig.key === 'memory') {
+          aValue = getMetricsForPod(a)?.memUsage || 0;
+          bValue = getMetricsForPod(b)?.memUsage || 0;
+        } else if (sortConfig.key === 'restarts') {
+          aValue = a.status?.containerStatuses?.reduce((acc: number, s: any) => acc + s.restartCount, 0) || 0;
+          bValue = b.status?.containerStatuses?.reduce((acc: number, s: any) => acc + s.restartCount, 0) || 0;
+        } else if (sortConfig.key === 'status') {
+          aValue = a.status?.phase || '';
+          bValue = b.status?.phase || '';
+        }
+
+        if (aValue < bValue) {
+          return sortConfig.direction === 'asc' ? -1 : 1;
+        }
+        if (aValue > bValue) {
+          return sortConfig.direction === 'asc' ? 1 : -1;
+        }
+        return 0;
+      });
+    }
+    return sortableItems;
+  }, [filteredResources, sortConfig, metricsData]);
+
   const filteredRawMetrics = useMemo(() => {
     if (!rawMetrics) return [];
     let filtered = rawMetrics;
@@ -416,6 +475,24 @@ export default function Home() {
 
     return filtered;
   }, [rawMetrics, metricsSearch, metricsNamespaceFilter]);
+
+  const nodeStats = useMemo(() => {
+    if (!data?.nodes) return [];
+    return data.nodes.map((n: any) => {
+      const metrics = metricsData?.nodes?.find((m: any) => m.metadata.name === n.metadata.name);
+      const cpuUsage = parseK8sResource(metrics?.usage?.cpu || '0');
+      const memUsage = parseK8sResource(metrics?.usage?.memory || '0');
+      const cpuCap = parseK8sResource(n.status.allocatable?.cpu || '0');
+      const memCap = parseK8sResource(n.status.allocatable?.memory || '0');
+      return {
+        name: n.metadata.name,
+        ready: n.status.conditions?.find((c: any) => c.type === 'Ready')?.status === 'True',
+        cpu: { usage: cpuUsage, capacity: cpuCap, pct: cpuCap > 0 ? (cpuUsage / cpuCap) * 100 : 0 },
+        memory: { usage: memUsage, capacity: memCap, pct: memCap > 0 ? (memUsage / memCap) * 100 : 0 },
+        conditions: n.status.conditions || []
+      };
+    });
+  }, [data, metricsData]);
 
   const renderContent = () => {
     if (isLoading && !data) return <div style={{ padding: '4rem', textAlign: 'center' }}><Activity className="animate-spin" /> Initializing...</div>;
@@ -644,6 +721,92 @@ export default function Home() {
                     </div>
                   </div>
                 )}
+              </div>
+            </div>
+
+            {/* Cluster Health & Nodes */}
+            <div className="glass" style={{ padding: '1.5rem', borderRadius: '24px', gridColumn: 'span 2', minHeight: '300px', display: 'flex', flexDirection: 'column' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1.5rem', alignItems: 'center' }}>
+                <h3 style={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}><Server size={18} /> Node Health & Metrics</h3>
+                <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <div className="status-dot status-running" />
+                    <span style={{ fontSize: '0.8rem', fontWeight: 600 }}>{nodeStats.filter((n: any) => n.ready).length} Ready</span>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <div className="status-dot status-failed" />
+                    <span style={{ fontSize: '0.8rem', fontWeight: 600 }}>{nodeStats.filter((n: any) => !n.ready).length} Not Ready</span>
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', overflowY: 'auto', maxHeight: '350px' }}>
+                {nodeStats.map((n: any) => (
+                  <div key={n.name} style={{ background: 'rgba(255,255,255,0.02)', padding: '1rem', borderRadius: '12px', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div style={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <div className={`status-dot ${n.ready ? 'status-running' : 'status-failed'}`} />
+                        {n.name}
+                      </div>
+                      <div style={{ fontSize: '0.7rem', opacity: 0.5 }}>{n.cpu.usage.toFixed(0)}m / {n.memory.usage.toFixed(0)}Mi</div>
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                      <div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.7rem', marginBottom: '4px' }}>
+                          <span style={{ opacity: 0.7 }}>CPU</span>
+                          <span style={{ fontWeight: 700, color: n.cpu.pct > 80 ? 'var(--danger)' : 'var(--primary)' }}>{n.cpu.pct.toFixed(0)}%</span>
+                        </div>
+                        <div style={{ width: '100%', height: '6px', background: 'rgba(255,255,255,0.05)', borderRadius: '3px', overflow: 'hidden' }}>
+                          <motion.div
+                            initial={{ width: 0 }}
+                            animate={{ width: `${Math.min(100, n.cpu.pct)}%` }}
+                            style={{ height: '100%', background: n.cpu.pct > 80 ? 'var(--danger)' : 'var(--primary)' }}
+                          />
+                        </div>
+                      </div>
+                      <div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.7rem', marginBottom: '4px' }}>
+                          <span style={{ opacity: 0.7 }}>Memory</span>
+                          <span style={{ fontWeight: 700, color: n.memory.pct > 80 ? 'var(--danger)' : 'var(--secondary)' }}>{n.memory.pct.toFixed(0)}%</span>
+                        </div>
+                        <div style={{ width: '100%', height: '6px', background: 'rgba(255,255,255,0.05)', borderRadius: '3px', overflow: 'hidden' }}>
+                          <motion.div
+                            initial={{ width: 0 }}
+                            animate={{ width: `${Math.min(100, n.memory.pct)}%` }}
+                            style={{ height: '100%', background: n.memory.pct > 80 ? 'var(--danger)' : 'var(--secondary)' }}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* API Requests by Resource */}
+            <div className="glass" style={{ padding: '1.5rem', borderRadius: '24px', minHeight: '300px', display: 'flex', flexDirection: 'column' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1rem' }}>
+                <h3 style={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}><Network size={18} /> API Requests by Resource</h3>
+                <div style={{ textAlign: 'right' }}>
+                  <div style={{ fontSize: '1.5rem', fontWeight: 900, color: '#06b6d4' }}>
+                    {((history[history.length - 1]?.podRequests || 0) + (history[history.length - 1]?.serviceRequests || 0)).toLocaleString()}
+                  </div>
+                  <div style={{ fontSize: '0.6rem', opacity: 0.5 }}>PODS & SERVICES</div>
+                </div>
+              </div>
+              <div style={{ flex: 1, width: '100%', minHeight: '180px' }}>
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={history.slice(-15)}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
+                    <XAxis dataKey="timestamp" hide />
+                    <YAxis stroke="rgba(255,255,255,0.3)" fontSize={10} />
+                    <Tooltip contentStyle={{ background: '#1a1a1c', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px' }} />
+                    <Legend />
+                    <Bar dataKey="podRequests" name="Pod Requests" fill="#ec4899" radius={[4, 4, 0, 0]} stackId="a" />
+                    <Bar dataKey="serviceRequests" name="Service Requests" fill="#8b5cf6" radius={[4, 4, 0, 0]} stackId="a" />
+                  </BarChart>
+                </ResponsiveContainer>
               </div>
             </div>
 
@@ -1305,14 +1468,61 @@ export default function Home() {
           <table className="resource-table">
             <thead>
               <tr>
-                <th>Name</th>
-                {activeTab === 'rbac' ? <th>Scope</th> : <th>Namespace</th>}
-                {activeTab === 'pods' && <th>CPU Usage (%)</th>}
-                {activeTab === 'pods' && <th>Mem Usage (%)</th>}
+                <th onClick={() => requestSort('name')} style={{ cursor: 'pointer' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                    Name
+                    {sortConfig?.key === 'name' && (sortConfig.direction === 'asc' ? <ChevronUp size={14} /> : <ChevronDown size={14} />)}
+                  </div>
+                </th>
+                {['clusterRoles', 'clusterRoleBindings', 'nodes', 'pvs', 'storageClasses'].includes(activeTab) ? <th>Scope</th> : (
+                  <th onClick={() => requestSort('namespace')} style={{ cursor: 'pointer' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                      Namespace
+                      {sortConfig?.key === 'namespace' && (sortConfig.direction === 'asc' ? <ChevronUp size={14} /> : <ChevronDown size={14} />)}
+                    </div>
+                  </th>
+                )}
+                {activeTab === 'pods' && (
+                  <th onClick={() => requestSort('cpu')} style={{ cursor: 'pointer' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                      CPU Usage (%)
+                      {sortConfig?.key === 'cpu' && (sortConfig.direction === 'asc' ? <ChevronUp size={14} /> : <ChevronDown size={14} />)}
+                    </div>
+                  </th>
+                )}
+                {activeTab === 'pods' && (
+                  <th onClick={() => requestSort('memory')} style={{ cursor: 'pointer' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                      Mem Usage (%)
+                      {sortConfig?.key === 'memory' && (sortConfig.direction === 'asc' ? <ChevronUp size={14} /> : <ChevronDown size={14} />)}
+                    </div>
+                  </th>
+                )}
                 {activeTab === 'pods' && <th>Node</th>}
-                {activeTab === 'pods' && <th>Restarts</th>}
-                {activeTab === 'pods' && <th>Uptime</th>}
-                {activeTab === 'pods' && <th>Status</th>}
+                {activeTab === 'pods' && (
+                  <th onClick={() => requestSort('restarts')} style={{ cursor: 'pointer' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                      Restarts
+                      {sortConfig?.key === 'restarts' && (sortConfig.direction === 'asc' ? <ChevronUp size={14} /> : <ChevronDown size={14} />)}
+                    </div>
+                  </th>
+                )}
+                {activeTab === 'pods' && (
+                  <th onClick={() => requestSort('age')} style={{ cursor: 'pointer' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                      Age
+                      {sortConfig?.key === 'age' && (sortConfig.direction === 'asc' ? <ChevronUp size={14} /> : <ChevronDown size={14} />)}
+                    </div>
+                  </th>
+                )}
+                {activeTab === 'pods' && (
+                  <th onClick={() => requestSort('status')} style={{ cursor: 'pointer' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                      Status
+                      {sortConfig?.key === 'status' && (sortConfig.direction === 'asc' ? <ChevronUp size={14} /> : <ChevronDown size={14} />)}
+                    </div>
+                  </th>
+                )}
                 {activeTab === 'deployments' && <th>Actions</th>}
                 {activeTab === 'services' && <th>Type</th>}
                 {activeTab === 'services' && <th>Cluster IP</th>}
@@ -1335,7 +1545,7 @@ export default function Home() {
               </tr>
             </thead>
             <tbody>
-              {filteredResources.map((res: any) => (
+              {((sortedResources && sortedResources.length > 0) ? sortedResources : filteredResources).map((res: any) => (
                 <tr key={res.metadata?.uid || res.metadata?.name}>
                   <td>
                     <div style={{ fontWeight: 600, color: 'var(--primary)' }}>{res.metadata?.name}</div>
@@ -1351,14 +1561,10 @@ export default function Home() {
                     )}
                   </td>
                   <td>
-                    {activeTab === 'rbac' ? (
-                      res.kind === 'ClusterRole' || res.kind === 'ClusterRoleBinding' ? (
-                        <span className="badge badge-blue">Cluster-wide</span>
-                      ) : (
-                        <span className="badge badge-purple">{res.metadata?.namespace}</span>
-                      )
+                    {['clusterRoles', 'clusterRoleBindings', 'nodes', 'pvs', 'storageClasses'].includes(activeTab) ? (
+                      <span className="badge badge-blue">Cluster-wide</span>
                     ) : (
-                      <span className="badge badge-purple">{res.metadata?.namespace || 'Cluster'}</span>
+                      <span className="badge badge-purple">{res.metadata?.namespace || '-'}</span>
                     )}
                   </td>
                   {activeTab === 'pods' && (

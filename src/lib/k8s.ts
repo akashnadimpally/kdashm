@@ -78,7 +78,10 @@ export async function getResources() {
         serviceAccounts,
         events,
         helmReleases,
-        helmCharts
+        helmCharts,
+        hpas,
+        replicaSets,
+        daemonSets
     ] = await Promise.all([
         safeList(coreApi().listPodForAllNamespaces()),
         safeList(coreApi().listNamespace()),
@@ -105,6 +108,8 @@ export async function getResources() {
         getHelmReleases(),
         getHelmCharts(),
         safeList(autoscalingApi().listHorizontalPodAutoscalerForAllNamespaces()),
+        safeList(appsApi().listReplicaSetForAllNamespaces()),
+        safeList(appsApi().listDaemonSetForAllNamespaces()),
     ]);
 
     return {
@@ -132,7 +137,9 @@ export async function getResources() {
         events,
         helmReleases,
         helmCharts,
-        hpas: (await Promise.all([safeList(autoscalingApi().listHorizontalPodAutoscalerForAllNamespaces())]))[0],
+        hpas,
+        replicaSets,
+        daemonSets,
         currentContext: kc.getCurrentContext()
     };
 }
