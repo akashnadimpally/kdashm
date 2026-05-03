@@ -1,39 +1,29 @@
-# AI Ops Agent Integration
+# AI Ops Assistant (Floating Widget)
 
-This `kdashm` dashboard now features a natively integrated **AI Ops Agent**. The agent can safely execute `kubectl` and shell commands against your Kubernetes clusters (like AKS or Docker Desktop) directly from the browser!
+The kDashM dashboard now features a premium, floating **AI Ops Assistant**—styled like a customer support chat window. This allows you to chat with an AI expert while simultaneously viewing your cluster resources, metrics, and logs.
 
-Because the browser sandbox restricts shell executions and prevents securely storing Azure OpenAI keys, the agent logic has been offloaded to a local backend API server running in the `opsagent` repository.
+## 🚀 How to Use the Assistant
 
-## Step-by-Step Instructions to Run the Integration (Frontend)
-
-To view and interact with the AI Ops Agent within the `kdashm` dashboard, follow these steps:
-
-### Step 1: Ensure the Ops Agent Backend is Running
-Before using the agent in the UI, you must start its backend API. 
-Open a terminal, navigate to your `opsagent` project directory, and run:
+### 1. Start the OpsAgent Backend
+The assistant in this dashboard requires the `opsagent` API server to be running.
+In your `opsagent` directory:
 ```bash
 cd api-server
-npm install  # (if not already installed)
 node index.js
 ```
-*This ensures the local agent is listening on `http://localhost:3001`.*
 
-### Step 2: Start the kDashM Dashboard
-Open a separate terminal in this `kdashm` project directory and start the Next.js development server as usual:
+### 2. Launch the Dashboard
+In this `kdashm` directory:
 ```bash
-npm install
 npm run dev
 ```
 
-### Step 3: Access the Agent
-1. Open your browser and navigate to `http://localhost:3000` (or whatever port Next.js uses).
-2. Look at the left sidebar navigation.
-3. Click on **AI Ops Agent** (right below the Overview tab).
-4. A dedicated, dark-mode terminal UI will appear. You can start typing commands like *"Check the status of my pods"* or *"Deploy an nginx image"*!
+### 3. Interaction
+- **Floating Bubble**: Click the blue terminal icon in the **bottom-right corner** of the screen to open the chat.
+- **Sidebar Access**: You can also toggle the assistant by clicking **AI Ops Agent** in the left navigation sidebar.
+- **Troubleshooting**: Ask the agent to diagnose errors like `CrashLoopBackOff` or help with deployments. It has direct access to your clusters!
 
-## How it works securely
-1. You type a prompt in the `<OpsAgentWidget />` component.
-2. The React component sends an HTTP POST request to `http://localhost:3001/api/chat`.
-3. The local `opsagent` Node.js server securely communicates with Azure AI Foundry.
-4. The local `mcp-server` executes any necessary `kubectl` commands natively on your laptop.
-5. The results are streamed directly back to your dashboard!
+## 🧩 UI Architecture
+- **Non-Blocking**: The chat window floats on top of the content area, so you can switch between Pods, Deployments, and Namespaces without closing the AI.
+- **Markdown Support**: The assistant now supports structured responses with bold text, code blocks, and proper lists.
+- **Context Aware**: The agent knows about your current workspace and the clusters you are managing.
