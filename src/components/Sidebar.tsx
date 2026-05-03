@@ -6,6 +6,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 
 const navItems = [
   { id: 'all', label: 'Overview', icon: LayoutDashboard },
+  { id: 'opsagent', label: 'AI Ops Agent', icon: Terminal },
   { id: 'visualizer', label: 'Resource Map', icon: GitBranch },
   { id: 'namespaces', label: 'Namespaces', icon: Box },
   { id: 'pods', label: 'Pods', icon: Box },

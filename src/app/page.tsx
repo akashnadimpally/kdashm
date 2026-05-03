@@ -4,6 +4,7 @@ import useSWR from 'swr';
 import { motion, AnimatePresence } from 'framer-motion';
 import Sidebar from '@/components/Sidebar';
 import { Box, Layers, Network, Shield, Settings, Server, Database, Cpu, Activity, RefreshCw, ChevronRight, ChevronUp, ChevronDown, X, Terminal, Eye, Lock, Unlock, RefreshCcw, Trash2, FileCode, User, Store, Plus, GitBranch, ShipWheel } from 'lucide-react';
+import OpsAgentWidget from '@/components/OpsAgentWidget';
 import yaml from 'js-yaml';
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -498,6 +499,14 @@ export default function Home() {
     if (isLoading && !data) return <div style={{ padding: '4rem', textAlign: 'center' }}><Activity className="animate-spin" /> Initializing...</div>;
     if (error) return <div style={{ padding: '4rem', color: 'var(--danger)' }}>Error: {error.message}</div>;
     if (!data) return null;
+
+    if (activeTab === 'opsagent') {
+      return (
+        <div className="animate-fade-in" style={{ height: 'calc(100vh - 120px)' }}>
+          <OpsAgentWidget />
+        </div>
+      );
+    }
 
     if (activeTab === 'all') {
       return (
