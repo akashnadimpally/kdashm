@@ -91,7 +91,16 @@ export default function OpsAgentWidget() {
               borderBottomLeftRadius: msg.role === 'ai' ? '4px' : '16px',
               boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)'
             }}>
-              {msg.content}
+              {msg.content.split(/(\*\*.*?\*\*|`.*?`|\n)/g).map((part, i) => {
+                if (part === '\n') return <br key={i} />;
+                if (part.startsWith('**') && part.endsWith('**')) {
+                  return <strong key={i}>{part.slice(2, -2)}</strong>;
+                }
+                if (part.startsWith('`') && part.endsWith('`')) {
+                  return <code key={i} style={{ background: 'rgba(255,255,255,0.1)', padding: '2px 4px', borderRadius: '4px', fontFamily: 'monospace' }}>{part.slice(1, -1)}</code>;
+                }
+                return <span key={i}>{part}</span>;
+              })}
             </div>
           </div>
         ))}

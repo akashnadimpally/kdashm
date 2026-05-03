@@ -41,7 +41,7 @@ const navItems = [
 
 const fetcher = (url: string) => fetch(url).then(res => res.json());
 
-export default function Sidebar({ active, setActive }: { active: string, setActive: (id: string) => void }) {
+export default function Sidebar({ active, setActive, isAgentOpen, setIsAgentOpen }: { active: string, setActive: (id: string) => void, isAgentOpen: boolean, setIsAgentOpen: (val: boolean) => void }) {
   const [showAddCluster, setShowAddCluster] = useState(false);
   const [kubeconfig, setKubeconfig] = useState('');
   const { data: contextData, mutate: mutateContext } = useSWR('/api/contexts', fetcher);
@@ -100,8 +100,14 @@ export default function Sidebar({ active, setActive }: { active: string, setActi
         {navItems.map((item) => (
           <button
             key={item.id}
-            onClick={() => setActive(item.id)}
-            className={`nav-item ${active === item.id ? 'active' : ''}`}
+            onClick={() => {
+              if (item.id === 'opsagent') {
+                setIsAgentOpen(true);
+              } else {
+                setActive(item.id);
+              }
+            }}
+            className={`nav-item ${(active === item.id || (item.id === 'opsagent' && isAgentOpen)) ? 'active' : ''}`}
             style={{ border: 'none', background: 'none', cursor: 'pointer', textAlign: 'left', width: '100%' }}
           >
             <item.icon size={18} />

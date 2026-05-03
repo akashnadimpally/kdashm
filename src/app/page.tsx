@@ -61,6 +61,7 @@ const metricsFetcher = async (url: string) => {
 };
 
 export default function Home() {
+  const [isAgentOpen, setIsAgentOpen] = useState(false);
   const [activeTab, setActiveTab] = useState('all');
   const [selectedCrd, setSelectedCrd] = useState<any>(null);
   const [selectedNamespace, setSelectedNamespace] = useState('all');
@@ -499,14 +500,6 @@ export default function Home() {
     if (isLoading && !data) return <div style={{ padding: '4rem', textAlign: 'center' }}><Activity className="animate-spin" /> Initializing...</div>;
     if (error) return <div style={{ padding: '4rem', color: 'var(--danger)' }}>Error: {error.message}</div>;
     if (!data) return null;
-
-    if (activeTab === 'opsagent') {
-      return (
-        <div className="animate-fade-in" style={{ height: 'calc(100vh - 120px)' }}>
-          <OpsAgentWidget />
-        </div>
-      );
-    }
 
     if (activeTab === 'all') {
       return (
@@ -1801,7 +1794,7 @@ export default function Home() {
 
   return (
     <main style={{ display: 'flex', height: '100vh', width: '100vw', overflow: 'hidden' }}>
-      <Sidebar active={activeTab} setActive={setActiveTab} />
+      <Sidebar active={activeTab} setActive={setActiveTab} isAgentOpen={isAgentOpen} setIsAgentOpen={setIsAgentOpen} />
       <div className="main-content" style={{ flex: 1 }}>
         <AnimatePresence mode="wait">
           <motion.div key={activeTab} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
@@ -2116,6 +2109,50 @@ export default function Home() {
               </div>
             </div>
           </div>
+        )}
+      </AnimatePresence>
+      {/* Floating AI Ops Agent Assistant */}
+      <AnimatePresence>
+        {!isAgentOpen && (
+          <motion.button
+            initial={{ scale: 0, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            exit={{ scale: 0, opacity: 0 }}
+            onClick={() => setIsAgentOpen(true)}
+            style={{ 
+              position: 'fixed', bottom: '30px', right: '30px', width: '60px', height: '60px', 
+              borderRadius: '30px', background: 'var(--primary)', color: 'white', border: 'none', 
+              cursor: 'pointer', zIndex: 1001, boxShadow: '0 10px 25px rgba(59, 130, 246, 0.5)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center'
+            }}
+          >
+            <Terminal size={28} />
+          </motion.button>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {isAgentOpen && (
+          <motion.div 
+            initial={{ y: 100, opacity: 0, scale: 0.9 }}
+            animate={{ y: 0, opacity: 1, scale: 1 }}
+            exit={{ y: 100, opacity: 0, scale: 0.9 }}
+            style={{ 
+              position: 'fixed', right: '30px', bottom: '100px', width: '400px', height: '600px', 
+              zIndex: 1001, borderRadius: '24px', overflow: 'hidden',
+              boxShadow: '0 20px 50px rgba(0,0,0,0.5)', border: '1px solid rgba(255,255,255,0.1)' 
+            }}
+          >
+            <div style={{ position: 'absolute', right: '20px', top: '20px', zIndex: 1002 }}>
+              <button 
+                onClick={() => setIsAgentOpen(false)}
+                style={{ background: 'rgba(0,0,0,0.3)', border: 'none', color: '#fff', padding: '8px', borderRadius: '50%', cursor: 'pointer' }}
+              >
+                <X size={20} />
+              </button>
+            </div>
+            <OpsAgentWidget />
+          </motion.div>
         )}
       </AnimatePresence>
     </main>
