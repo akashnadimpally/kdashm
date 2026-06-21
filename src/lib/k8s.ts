@@ -1,7 +1,52 @@
 import * as k8s from '@kubernetes/client-node';
 
 let kc = new k8s.KubeConfig();
-kc.loadFromDefault();
+let customConfigs: string[] = [];
+
+try {
+    kc.loadFromDefault();
+} catch (e) {
+    console.warn('Failed to load default kubeconfig at startup:', e);
+}
+
+function refreshKubeConfig() {
+    const newKc = new k8s.KubeConfig();
+    try {
+        newKc.loadFromDefault();
+    } catch (e) {
+        console.warn('Could not reload default kubeconfig:', e);
+    }
+
+    for (const configStr of customConfigs) {
+        try {
+            const tempKc = new k8s.KubeConfig();
+            tempKc.loadFromString(configStr);
+            newKc.clusters.push(...tempKc.clusters);
+            newKc.users.push(...tempKc.users);
+            newKc.contexts.push(...tempKc.contexts);
+        } catch (e) {
+            console.error('Error applying custom kubeconfig:', e);
+        }
+    }
+
+    const oldContext = kc.getCurrentContext();
+    kc = newKc;
+
+    if (oldContext && kc.getContexts().some(c => c.name === oldContext)) {
+        kc.setCurrentContext(oldContext);
+    } else if (kc.getContexts().length > 0) {
+        const defaultContext = kc.getContexts().find(c => 
+            c.name.includes('docker-desktop') || 
+            c.name.includes('docker-for-desktop') || 
+            c.name === 'minikube'
+        );
+        if (defaultContext) {
+            kc.setCurrentContext(defaultContext.name);
+        } else {
+            kc.setCurrentContext(kc.getContexts()[0].name);
+        }
+    }
+}
 
 export function getKubeConfig() {
     return kc;
@@ -12,21 +57,12 @@ export function setContext(contextName: string) {
 }
 
 export function addKubeConfig(configStr: string) {
-    const newKc = new k8s.KubeConfig();
-    newKc.loadFromString(configStr);
-    const contexts = newKc.getContexts();
-
-    // Merge into existing kc
-    kc.clusters.push(...newKc.clusters);
-    kc.users.push(...newKc.users);
-    kc.contexts.push(...newKc.contexts);
-
-    if (contexts.length > 0) {
-        kc.setCurrentContext(contexts[0].name);
-    }
+    customConfigs.push(configStr);
+    refreshKubeConfig();
 }
 
 export function getContexts() {
+    refreshKubeConfig();
     return {
         contexts: kc.getContexts(),
         currentContext: kc.getCurrentContext(),
@@ -340,4 +376,20 @@ export async function installHelmChart(chartName: string, releaseName: string, n
             resolve(stdout);
         });
     });
+}
+
+export async function getCustomResourceInstances(group: string, version: string, plural: string) {
+    try {
+        const res: any = await customObjectsApi().listClusterCustomObject({ group, version, plural });
+        return res.body?.items || res.items || [];
+    } catch (e: any) {
+        // Some CRDs are namespace-scoped; try all namespaces fallback
+        try {
+            const res: any = await customObjectsApi().listCustomObjectForAllNamespaces({ group, version, plural });
+            return res.body?.items || res.items || [];
+        } catch {
+            console.error(`[CRD] Failed to list ${group}/${version}/${plural}:`, e.message || e);
+            return [];
+        }
+    }
 }

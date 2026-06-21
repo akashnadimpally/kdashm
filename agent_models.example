@@ -1,0 +1,32 @@
+{
+  "openai_gpt": {
+    "API_ENDPOINT": "",
+    "MODEL_NAME": "",
+    "API_VERSION": "",
+    "ACCESS_KEY": ""
+  },
+  "claude_ops": {
+    "API_ENDPOINT": "",
+    "MODEL_NAME": "",
+    "API_VERSION": "",
+    "ACCESS_KEY": ""
+  },
+  "claude_sonnet": {
+    "API_ENDPOINT": "",
+    "MODEL_NAME": "",
+    "API_VERSION": "",
+    "ACCESS_KEY": ""
+  },
+  "deepseek": {
+    "API_ENDPOINT": "",
+    "MODEL_NAME": "",
+    "API_VERSION": "",
+    "ACCESS_KEY": ""
+  },
+  "gemini": {
+    "API_ENDPOINT": "",
+    "MODEL_NAME": "",
+    "API_VERSION": "",
+    "ACCESS_KEY": ""
+  }
+}

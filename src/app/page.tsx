@@ -3,7 +3,8 @@ import { useState, useMemo, useEffect } from 'react';
 import useSWR from 'swr';
 import { motion, AnimatePresence } from 'framer-motion';
 import Sidebar from '@/components/Sidebar';
-import { Box, Layers, Network, Shield, Settings, Server, Database, Cpu, Activity, RefreshCw, ChevronRight, ChevronUp, ChevronDown, X, Terminal, Eye, Lock, Unlock, RefreshCcw, Trash2, FileCode, User, Store, Plus, GitBranch, ShipWheel } from 'lucide-react';
+import AgentPanel from '@/components/AgentPanel';
+import { Box, Layers, Network, Shield, Settings, Server, Database, Cpu, Activity, RefreshCw, ChevronRight, ChevronUp, ChevronDown, X, Terminal, Eye, Lock, Unlock, RefreshCcw, Trash2, FileCode, User, Store, Plus, GitBranch, ShipWheel, Bot } from 'lucide-react';
 import yaml from 'js-yaml';
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -83,6 +84,7 @@ export default function Home() {
   const [metricsExplorerSearch, setMetricsExplorerSearch] = useState('');
   const [selectedExplorerMetric, setSelectedExplorerMetric] = useState<any>(null);
   const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' } | null>(null);
+  const [showAgentPanel, setShowAgentPanel] = useState(false);
 
   const { data, error, isLoading, mutate } = useSWR('/api/resources', fetcher, {
     refreshInterval: 10000,
@@ -147,7 +149,7 @@ export default function Home() {
       if (unifiedRawMetrics) {
         const reqMetric = unifiedRawMetrics.find((m: any) => m.name === 'apiserver_request_total');
         if (reqMetric) {
-          reqMetric.values.forEach((v: any) => {
+          (reqMetric as any).values.forEach((v: any) => {
             if (v.labels?.resource === 'pods') podRequests += typeof v.value === 'number' ? v.value : 0;
             if (v.labels?.resource === 'services') serviceRequests += typeof v.value === 'number' ? v.value : 0;
           });
@@ -161,7 +163,7 @@ export default function Home() {
       if (selectedMetricForChart) {
         const liveMetric = (unifiedRawMetrics || []).find((m: any) => m.name === selectedMetricForChart.name);
         if (liveMetric) {
-          const sumValue = liveMetric.values.reduce((acc: number, v: any) => acc + (typeof v.value === 'number' ? v.value : 0), 0);
+          const sumValue = (liveMetric as any).values.reduce((acc: number, v: any) => acc + (typeof v.value === 'number' ? v.value : 0), 0);
           setMetricHistory(prev => [...prev, { timestamp, value: sumValue }].slice(-30));
         }
       }
@@ -816,7 +818,7 @@ export default function Home() {
                 <h3 style={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}><Network size={18} /> Network Activity</h3>
                 <div style={{ textAlign: 'right' }}>
                   <div style={{ fontSize: '1.5rem', fontWeight: 900, color: '#06b6d4' }}>
-                    {rawMetrics?.find((m: any) => m.name === 'apiserver_request_total')?.values?.length || 0}
+                    {(rawMetrics as any)?.find((m: any) => m.name === 'apiserver_request_total')?.values?.length || 0}
                   </div>
                   <div style={{ fontSize: '0.6rem', opacity: 0.5 }}>API REQUESTS</div>
                 </div>
@@ -1358,7 +1360,7 @@ export default function Home() {
               </div>
             </div>
             <div style={{ flex: 1, overflowY: 'auto' }}>
-              {filtered.map(m => (
+              {filtered.map((m: any) => (
                 <div
                   key={m.name}
                   onClick={() => setSelectedExplorerMetric(m)}
@@ -1793,13 +1795,35 @@ export default function Home() {
   return (
     <main style={{ display: 'flex', height: '100vh', width: '100vw', overflow: 'hidden' }}>
       <Sidebar active={activeTab} setActive={setActiveTab} />
-      <div className="main-content" style={{ flex: 1 }}>
+      <div className="main-content" style={{ flex: 1, transition: 'margin-right 0.3s cubic-bezier(0.4,0,0.2,1)' }}>
         <AnimatePresence mode="wait">
           <motion.div key={activeTab} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
             {renderContent()}
           </motion.div>
         </AnimatePresence>
       </div>
+
+      {/* ─── Floating AI Agent Toggle Button ─── */}
+      <motion.button
+        id="ai-agent-toggle"
+        className={`agent-float-btn ${showAgentPanel ? 'active' : ''}`}
+        onClick={() => setShowAgentPanel((v) => !v)}
+        whileHover={{ scale: 1.1 }}
+        whileTap={{ scale: 0.95 }}
+        title="Open K8s AI Agent"
+        aria-label="Toggle K8s AI Agent panel"
+      >
+        <Bot size={22} color="#fff" />
+      </motion.button>
+
+      {/* ─── AI Agent Panel ─── */}
+      <AgentPanel
+        isOpen={showAgentPanel}
+        onClose={() => setShowAgentPanel(false)}
+        currentContext={data?.currentContext}
+        currentNamespace={selectedNamespace}
+        clusterData={data}
+      />
 
       <AnimatePresence>
         {showRestartModal && (
