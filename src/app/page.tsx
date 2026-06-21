@@ -90,6 +90,11 @@ export default function Home() {
     refreshInterval: 10000,
   });
 
+  const { data: userData } = useSWR('/api/auth/me', fetcher);
+  const userRole = userData?.role || 'reader';
+  const isReader = userRole === 'reader';
+  const isContributor = userRole === 'contributor';
+
   const { data: metricsData } = useSWR('/api/metrics', fetcher, {
     refreshInterval: 5000,
   });
@@ -209,7 +214,28 @@ export default function Home() {
   }, [activeTab, data, selectedNamespace, localPositions]);
 
   const performAction = async (action: string, res: any, strategy?: string, options?: any) => {
+    if (isReader) {
+      alert("Permission Denied: Readers do not have permission to modify cluster resources.");
+      return;
+    }
     const kind = res.kind || (activeTab === 'helmCharts' ? 'helmChart' : activeTab.slice(0, -1));
+
+    if (isContributor) {
+      const lowerKind = kind?.toLowerCase() || '';
+      const isRbacKind = [
+        'role',
+        'clusterrole',
+        'rolebinding',
+        'clusterrolebinding',
+        'serviceaccount'
+      ].includes(lowerKind);
+
+      if (isRbacKind) {
+        alert("Permission Denied: Contributors are not permitted to manage or grant cluster permissions (RBAC).");
+        return;
+      }
+    }
+
     const id = `${action}-${res.metadata.uid}`;
     setActionLoading(id);
     try {

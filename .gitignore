@@ -42,3 +42,6 @@ next-env.d.ts
 
 # AI Agent — sensitive model config (contains API keys)
 agent_models.json
+
+# POC Authenticated Users credentials
+allowed_users.txt

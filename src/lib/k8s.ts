@@ -295,9 +295,13 @@ export async function getMetrics() {
             pods: res.body?.items || res.items || [],
             nodes: nodeRes.body?.items || nodeRes.items || []
         };
-    } catch (e) {
-        console.error('Metrics fetch error:', e);
-        return { pods: [], nodes: [], error: 'Metrics Server not found' };
+    } catch (e: any) {
+        // Metrics Server (metrics.k8s.io) is optional — silently return empty data when not installed
+        const isNotFound = e?.body?.includes?.('404') || e?.code === 404 || String(e).includes('404');
+        if (!isNotFound) {
+            console.warn('[Metrics] Unexpected error fetching metrics:', e?.message ?? e);
+        }
+        return { pods: [], nodes: [], error: 'Metrics Server not available' };
     }
 }
 

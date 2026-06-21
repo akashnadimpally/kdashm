@@ -95,7 +95,7 @@ export default function Sidebar({ active, setActive }: { active: string, setActi
         </select>
       </div>
 
-      <nav style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+      <nav style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', marginBottom: '1.5rem' }}>
         {navItems.map((item) => (
           <button
             key={item.id}
@@ -108,6 +108,9 @@ export default function Sidebar({ active, setActive }: { active: string, setActi
           </button>
         ))}
       </nav>
+
+      {/* User Session Profile Card */}
+      <UserSessionProfile />
 
       <AnimatePresence>
         {showAddCluster && (
@@ -142,5 +145,96 @@ export default function Sidebar({ active, setActive }: { active: string, setActi
         )}
       </AnimatePresence>
     </aside>
+  );
+}
+
+// User Session helper component
+import { LogOut } from 'lucide-react';
+
+function UserSessionProfile() {
+  const { data: userData } = useSWR('/api/auth/me', fetcher);
+  const [loggingOut, setLoggingOut] = useState(false);
+
+  const handleLogout = async () => {
+    setLoggingOut(true);
+    try {
+      await fetch('/api/auth/logout', { method: 'POST' });
+      window.location.href = '/login';
+    } catch (err) {
+      console.error('Logout error:', err);
+      setLoggingOut(false);
+    }
+  };
+
+  if (!userData?.authenticated) return null;
+
+  return (
+    <div 
+      className="glass"
+      style={{ 
+        marginTop: 'auto', 
+        padding: '0.75rem 1rem', 
+        borderRadius: '12px', 
+        display: 'flex', 
+        alignItems: 'center', 
+        justifyContent: 'space-between',
+        background: 'rgba(255,255,255,0.02)',
+        border: '1px solid rgba(255,255,255,0.05)',
+      }}
+    >
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem', overflow: 'hidden' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <span style={{ fontSize: '0.75rem', opacity: 0.4, fontWeight: 'bold', textTransform: 'uppercase' }}>Session User</span>
+          <span 
+            className="badge" 
+            style={{ 
+              fontSize: '0.65rem', 
+              padding: '1px 6px',
+              background: userData.role === 'admin' ? 'rgba(59, 130, 246, 0.2)' : userData.role === 'contributor' ? 'rgba(139, 92, 246, 0.2)' : 'rgba(148, 163, 184, 0.2)',
+              color: userData.role === 'admin' ? '#60a5fa' : userData.role === 'contributor' ? '#a78bfa' : '#cbd5e1',
+              borderRadius: '9999px',
+              fontWeight: 'bold',
+              textTransform: 'capitalize'
+            }}
+          >
+            {userData.role}
+          </span>
+        </div>
+        <span 
+          style={{ 
+            fontSize: '0.85rem', 
+            color: '#cbd5e1', 
+            whiteSpace: 'nowrap', 
+            overflow: 'hidden', 
+            textOverflow: 'ellipsis',
+            maxWidth: '150px'
+          }} 
+          title={userData.email}
+        >
+          {userData.email}
+        </span>
+      </div>
+      <button 
+        onClick={handleLogout}
+        disabled={loggingOut}
+        style={{ 
+          background: 'none', 
+          border: 'none', 
+          color: '#f87171', 
+          cursor: 'pointer',
+          padding: '6px',
+          borderRadius: '8px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          transition: 'background 0.2s'
+        }}
+        onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(239, 68, 68, 0.1)'}
+        onMouseLeave={(e) => e.currentTarget.style.background = 'none'}
+        title="Sign Out"
+      >
+        <LogOut size={16} />
+      </button>
+    </div>
   );
 }

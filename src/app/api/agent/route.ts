@@ -1,7 +1,8 @@
 import { NextRequest } from 'next/server';
 import { readFileSync } from 'fs';
 import { join } from 'path';
-import { getResources, getMetrics } from '@/lib/k8s';
+import { getResources } from '@/lib/k8s';
+import { verifySessionToken } from '@/lib/auth';
 
 interface ModelConfig {
   API_ENDPOINT: string;
@@ -20,7 +21,7 @@ function loadModelConfig(): AgentModels {
   return JSON.parse(raw);
 }
 
-function buildSystemPrompt(clusterContext: any): string {
+function buildSystemPrompt(clusterContext: any, role: string): string {
   const {
     contextName = 'unknown',
     pods = [],
@@ -61,6 +62,31 @@ function buildSystemPrompt(clusterContext: any): string {
     .map((e: any) => `  - [${e.involvedObject.kind}/${e.involvedObject.name}] ${e.reason}: ${e.message}`)
     .join('\n');
 
+  // Enforce role-based behavior instructions inside the system prompt
+  let roleInstructions = "";
+  if (role === "reader") {
+    roleInstructions = `
+## IMPORTANT: Authorization Constraint (Reader)
+You are authorized under the 'reader' role. You only have READ access to the Kubernetes cluster.
+- You CANNOT perform write, modify, or delete operations (e.g., you cannot scale workloads, restart deployments, delete pods, create configmaps, or install helm charts).
+- Do not suggest commands that perform modifications (e.g. avoid 'kubectl delete', 'kubectl apply', 'helm install'). Only suggest read-only operations (e.g. 'kubectl get', 'kubectl describe', 'kubectl logs', 'kubectl auth can-i').
+- If the user asks you to perform a modification, scale, restart, or delete a resource, refuse politely. State clearly that you are running under a read-only 'reader' role session and do not have write/CRUD permissions.
+`;
+  } else if (role === "contributor") {
+    roleInstructions = `
+## IMPORTANT: Authorization Constraint (Contributor)
+You are authorized under the 'contributor' role. You have CRUD permissions for cluster workloads but CANNOT grant access or modify security controls.
+- You can create, update, delete, scale, or restart workloads (e.g., suggest 'kubectl delete pod', 'kubectl rollout restart deployment', 'helm install').
+- You CANNOT create, update, delete, or modify RBAC permissions, roles, role bindings, cluster roles, cluster role bindings, or service accounts.
+- If the user asks you to grant permissions, create a role/binding, or manage service accounts, refuse politely. State clearly that you are running under a 'contributor' role session and do not have access-granting (RBAC) permissions.
+`;
+  } else {
+    roleInstructions = `
+## IMPORTANT: Authorization Constraint (Admin)
+You are authorized under the 'admin' role. You have full access to the cluster, including creating, updating, and deleting all resources, as well as granting/modifying security permissions, roles, and bindings.
+`;
+  }
+
   return `You are an expert Kubernetes Site Reliability Engineer (SRE) and Cloud-Native AI Agent embedded in a Kubernetes dashboard called kDashM.
 
 ## Your Role
@@ -70,6 +96,7 @@ function buildSystemPrompt(clusterContext: any): string {
 - Be concise, precise, and always back your analysis with the cluster data provided
 - When asked to "fix" something, provide the exact steps, commands, or YAML needed
 - Use markdown formatting with code blocks for commands and YAML snippets
+${roleInstructions}
 
 ## Current Cluster State (${new Date().toUTCString()})
 
@@ -106,6 +133,17 @@ ${warningEvents ? `### Recent Warning Events\n${warningEvents}` : '### ✅ No re
 
 export async function POST(req: NextRequest) {
   try {
+    // 1. Decode role from session token
+    const sessionCookie = req.cookies.get("kdashm_session")?.value;
+    const payload = sessionCookie ? await verifySessionToken(sessionCookie) : null;
+
+    if (!payload) {
+      return new Response(
+        JSON.stringify({ error: "Unauthorized" }),
+        { status: 401, headers: { 'Content-Type': 'application/json' } }
+      );
+    }
+
     const body = await req.json();
     const { model = 'openai_gpt', messages = [], clusterSummary } = body;
 
@@ -142,7 +180,7 @@ export async function POST(req: NextRequest) {
       console.warn('[Agent] Could not fetch live cluster data, using provided summary:', e);
     }
 
-    const systemPrompt = buildSystemPrompt(clusterContext);
+    const systemPrompt = buildSystemPrompt(clusterContext, payload.role);
 
     // Build OpenAI-compatible messages
     const chatMessages = [
