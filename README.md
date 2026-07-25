@@ -76,7 +76,7 @@ To enable metrics (CPU/Memory usage) on local clusters like Docker Desktop, you 
     ```
 
 2.  **Open the dashboard**:
-    Navigate to [http://localhost:3000](http://localhost:3000) in your browser.
+    Navigate to [http://localhost:3500](http://localhost:3500) in your browser.
 
     The dashboard will automatically connect to your active Kubernetes context (as defined in `~/.kube/config`).
 
@@ -104,7 +104,7 @@ Once configured, simply switch the context using the dropdown in the sidebar or 
 ## Configuration
 
 *   **Kubeconfig**: The app uses the default kubeconfig location (`~/.kube/config`). Ensure your context is set correctly before starting.
-*   **Port**: runs on port `3000` by default.
+*   **Port**: runs on port `3500` by default.
 
 ## Contributing
 

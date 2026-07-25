@@ -1,0 +1,48 @@
+# ========================================================
+# Windows Dockerfile for kdashm (Next.js Application)
+# ========================================================
+
+# Stage 1: Build stage on Windows Server Core
+FROM mcr.microsoft.com/windows/servercore:ltsc2022 AS builder
+
+SHELL ["powershell", "-Command", "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue';"]
+
+# Install Node.js 20 on Windows
+ENV NODE_VERSION=20.11.1
+RUN Invoke-WebRequest -Uri "https://nodejs.org/dist/v$env:NODE_VERSION/node-v$env:NODE_VERSION-x64.msi" -OutFile node.msi ; \
+    Start-Process msiexec.exe -ArgumentList '/i', 'node.msi', '/quiet', '/norestart' -NoNewWindow -Wait ; \
+    Remove-Item node.msi
+
+WORKDIR C:/app
+
+COPY package.json package-lock.json ./
+RUN npm ci
+
+COPY . .
+ENV NEXT_TELEMETRY_DISABLED=1
+RUN npm run build
+
+# Stage 2: Production Runner Stage on Windows Server Core
+FROM mcr.microsoft.com/windows/servercore:ltsc2022 AS runner
+
+SHELL ["powershell", "-Command", "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue';"]
+
+ENV NODE_VERSION=20.11.1
+RUN Invoke-WebRequest -Uri "https://nodejs.org/dist/v$env:NODE_VERSION/node-v$env:NODE_VERSION-x64.msi" -OutFile node.msi ; \
+    Start-Process msiexec.exe -ArgumentList '/i', 'node.msi', '/quiet', '/norestart' -NoNewWindow -Wait ; \
+    Remove-Item node.msi
+
+WORKDIR C:/app
+
+ENV NODE_ENV=production
+ENV NEXT_TELEMETRY_DISABLED=1
+ENV PORT=3500
+
+COPY --from=builder C:/app/public ./public
+COPY --from=builder C:/app/.next ./.next
+COPY --from=builder C:/app/node_modules ./node_modules
+COPY --from=builder C:/app/package.json ./package.json
+
+EXPOSE 3500
+
+CMD ["npm", "run", "start"]

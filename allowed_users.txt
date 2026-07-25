@@ -1,0 +1,5 @@
+# Allowed Users for K8s Dashboard POC
+# Format: email:password:role (one per line)
+admin@kdashm.local:adminpassword123:admin
+contributor@kdashm.local:opssecure456:contributor
+reader@kdashm.local:readsecure789:reader
