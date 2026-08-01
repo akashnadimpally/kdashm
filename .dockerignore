@@ -1,0 +1,7 @@
+# Ignore node_modules and build artifacts from the Docker build context
+node_modules
+.next
+.git
+.gitignore
+*.md
+Dockerfile*
